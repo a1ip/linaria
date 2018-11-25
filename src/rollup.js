@@ -35,7 +35,12 @@ module.exports = function linaria({
     transform(code /* :string */, id /* :string */) {
       if (!filter(id)) return;
 
-      const result = transform(id, code, rest);
+      const result = transform(code, {
+        inputFilename: id,
+        outputFilename: null,
+        inputSourceMap: null,
+        pluginOptions: rest,
+      });
 
       if (!result.cssText) return;
 

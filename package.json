@@ -84,6 +84,7 @@
     "@babel/register": "^7.0.0",
     "dedent": "^0.7.0",
     "loader-utils": "^1.1.0",
+    "mkdirp": "^0.5.1",
     "postcss": "^7.0.2",
     "react-is": "^16.5.1",
     "source-map": "^0.7.3",

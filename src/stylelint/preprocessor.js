@@ -18,8 +18,13 @@ function preprocessor() {
       let result;
 
       try {
-        result = transform(filename, input, {
-          evaluate: true,
+        result = transform(input, {
+          inputFilename: filename,
+          outputFilename: null,
+          inputSourceMap: null,
+          pluginOptions: {
+            evaluate: true,
+          },
         });
       } catch (e) {
         // Ignore parse errors

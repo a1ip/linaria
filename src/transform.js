@@ -40,49 +40,61 @@ type PluginOptions = {
 }
 */
 
+/* ::
+type Options = {
+  inputFilename: string,
+  outputFilename: ?string,
+  inputSourceMap: ?Object,
+  pluginOptions: ?{
+    evaluate?: boolean,
+    displayName?: boolean,
+  },
+}
+*/
+
 const STYLIS_DECLARATION = 1;
 
 module.exports = function transform(
-  filename /* :string */,
-  content /* :string */,
-  options /* :PluginOptions */,
-  inputSourceMap /* :?Object */,
-  outputFilename /* : ?string */
+  code /* :string */,
+  options /* :Options */
 ) /* : Result */ {
   // Check if the file contains `css` or `styled` tag first
   // Otherwise we should skip transforming
   if (
-    !/\b(styled[\s\n]*(\([\s\S]+\)|\.[\s\n]*[a-z0-9]+)|css)[\s\n]*`/.test(
-      content
-    )
+    !/\b(styled[\s\n]*(\([\s\S]+\)|\.[\s\n]*[a-z0-9]+)|css)[\s\n]*`/.test(code)
   ) {
     return {
-      code: content,
-      sourceMap: inputSourceMap,
+      code,
+      sourceMap: options.inputSourceMap,
     };
   }
 
   // Parse the code first so babel uses user's babel config for parsing
   // We don't want to use user's config when transforming the code
-  const ast = babel.parseSync(content, {
-    filename,
+  const ast = babel.parseSync(code, {
+    filename: options.inputFilename,
     caller: { name: 'linaria' },
   });
 
-  const { metadata, code, map } = babel.transformFromAstSync(ast, content, {
-    filename,
-    presets: [[require.resolve('./babel'), options]],
-    babelrc: false,
-    configFile: false,
-    sourceMaps: true,
-    sourceFileName: filename,
-    inputSourceMap,
-  });
+  const { metadata, code: transformedCode, map } = babel.transformFromAstSync(
+    ast,
+    code,
+    {
+      filename: options.inputFilename,
+      presets: [[require.resolve('./babel'), options.pluginOptions]],
+      babelrc: false,
+      configFile: false,
+      sourceMaps: true,
+      sourceFileName: options.inputFilename,
+      // Must be a boolean/object/undefined, so null have to be replaced with false.
+      inputSourceMap: options.inputSourceMap || false,
+    }
+  );
 
   if (!metadata.linaria) {
     return {
-      code: content,
-      sourceMap: inputSourceMap,
+      code,
+      sourceMap: options.inputSourceMap,
     };
   }
 
@@ -92,7 +104,7 @@ module.exports = function transform(
   let cssText = '';
 
   stylis.use(null)((context, decl) => {
-    if (context === STYLIS_DECLARATION && outputFilename) {
+    if (context === STYLIS_DECLARATION && options.outputFilename) {
       // When writing to a file, we need to adjust the relative paths inside url(..) expressions
       // It'll allow css-loader to resolve an imported asset properly
       return decl.replace(
@@ -102,9 +114,9 @@ module.exports = function transform(
           // Replace asset path with new path relative to the output CSS
           path.relative(
             /* $FlowFixMe */
-            path.dirname(outputFilename),
+            path.dirname(options.outputFilename),
             // Get the absolute path to the asset from the path relative to the JS file
-            path.resolve(path.dirname(filename), p2)
+            path.resolve(path.dirname(options.inputFilename), p2)
           ) +
           p3
       );
@@ -128,7 +140,7 @@ module.exports = function transform(
   });
 
   return {
-    code,
+    code: transformedCode,
     cssText,
     rules,
     replacements,
@@ -138,14 +150,16 @@ module.exports = function transform(
     get cssSourceMapText() {
       if (mappings && mappings.length) {
         const generator = new SourceMapGenerator({
-          file: filename.replace(/\.js$/, '.css'),
+          file: options.inputFilename.replace(/\.js$/, '.css'),
         });
 
         mappings.forEach(mapping =>
-          generator.addMapping(Object.assign({}, mapping, { source: filename }))
+          generator.addMapping(
+            Object.assign({}, mapping, { source: options.inputFilename })
+          )
         );
 
-        generator.setSourceContent(filename, content);
+        generator.setSourceContent(options.inputFilename, code);
 
         return generator.toString();
       }

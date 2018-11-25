@@ -1,11 +1,17 @@
+/* @flow */
+
 const fs = require('fs');
 const path = require('path');
 const mkdirp = require('mkdirp');
+// $FlowFixMe
 const Module = require('module');
 const loaderUtils = require('loader-utils');
 const transform = require('./transform');
 
-module.exports = function loader(content, inputSourceMap) {
+module.exports = function loader(
+  content /* :string */,
+  inputSourceMap /* :?Object */
+) {
   const { sourceMap, cacheDirectory = '.linaria-cache', ...rest } =
     loaderUtils.getOptions(this) || {};
 
@@ -19,20 +25,20 @@ module.exports = function loader(content, inputSourceMap) {
     )
   );
 
-  const result = transform(
-    this.resourcePath,
-    content,
-    rest,
+  const result = transform(content, {
+    inputFilename: this.resourcePath,
     inputSourceMap,
-    outputFilename
-  );
+    outputFilename,
+    // $FlowFixMe
+    pluginOptions: rest,
+  });
 
   if (result.cssText) {
     let { cssText } = result;
 
     if (sourceMap) {
       cssText += `/*# sourceMappingURL=data:application/json;base64,${Buffer.from(
-        result.cssSourceMapText
+        result.cssSourceMapText || ''
       ).toString('base64')}*/`;
     }
 
