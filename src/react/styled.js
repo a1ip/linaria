@@ -1,7 +1,18 @@
-const React = require('react'); // eslint-disable-line import/no-extraneous-dependencies
+/* @flow */
 
-function styled(tag) {
-  return options => {
+const React = require('react'); // eslint-disable-line import/no-extraneous-dependencies
+const { cx } = require('../index');
+
+/* ::
+type Options = {
+  name: string,
+  class: string,
+  vars?: { [string]: [string | number | ((props: *) => string | number), string | void] }
+}
+*/
+
+function styled(tag /* : React.ComponentType<*> | string */) {
+  return (options /* : Options */) => {
     if (process.env.NODE_ENV !== 'production') {
       if (Array.isArray(options)) {
         // We received a strings array since it's used as a tag
@@ -11,28 +22,41 @@ function styled(tag) {
       }
     }
 
+    /* $FlowFixMe: Flow doesn't know about forwardRef */
     const Result = React.forwardRef((props, ref) => {
-      const next = Object.assign({}, props, {
-        ref,
-        className: props.className
-          ? `${options.class} ${props.className}`
-          : options.class,
-      });
+      const { as: component = tag, class: className, ...rest } = props;
 
-      if (options.vars) {
+      rest.ref = ref;
+      rest.className = cx(rest.className || className, options.class);
+
+      const { vars } = options;
+
+      if (vars) {
         const style = {};
 
-        Object.keys(options.vars).forEach(name => {
-          const [value, unit = ''] = options.vars[name];
+        Object.keys(vars).forEach(name => {
+          const [value, unit = ''] = vars[name];
           style[`--${name}`] = `${
             typeof value === 'function' ? value(props) : value
           }${unit}`;
         });
 
-        next.style = Object.assign(style, next.style);
+        rest.style = Object.assign(style, rest.style);
       }
 
-      return React.createElement(tag, next);
+      /* $FlowFixMe */
+      if (typeof tag.className === 'string' && tag !== component) {
+        // If the underlying tag is a styled component, forward the `as` prop
+        // Otherwise the styles from the underlying component will be ignored
+        return React.createElement(
+          tag,
+          Object.assign(rest, {
+            as: component,
+          })
+        );
+      }
+
+      return React.createElement(component, rest);
     });
 
     Result.displayName = options.name;
@@ -52,3 +76,19 @@ if (process.env.NODE_ENV !== 'production') {
 } else {
   module.exports = styled;
 }
+
+/* ::
+type CSSProperties = {
+  [key: string]: string | number | CSSProperties;
+};
+
+type StyledComponent<T> = React.ComponentType<T & { as?: React$ElementType }>;
+
+type StyledTag<T> = (strings: string[], ...exprs: Array<string | number | CSSProperties | (T => string | number)>) => StyledComponent<T>;
+
+type StyledJSXIntrinsics = $ObjMap<$JSXIntrinsics, <T>({ props: T }) => StyledTag<T>>;
+
+declare module.exports: StyledJSXIntrinsics & {|
+  <T>(T): StyledTag<React.ElementConfig<T>>,
+|};
+*/

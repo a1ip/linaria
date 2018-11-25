@@ -1,61 +1,80 @@
-const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const mkdirp = require('mkdirp');
 const Module = require('module');
 const loaderUtils = require('loader-utils');
-const slugify = require('./slugify');
 const transform = require('./transform');
 
-module.exports = function loader(content) {
-  const options = loaderUtils.getOptions(this) || {};
-  const { css, dependencies, map } = transform(
-    this.resourcePath,
-    content,
-    options.sourceMap
+module.exports = function loader(content, inputSourceMap) {
+  const { sourceMap, cacheDirectory = '.linaria-cache', ...rest } =
+    loaderUtils.getOptions(this) || {};
+
+  const outputFilename = path.join(
+    path.isAbsolute(cacheDirectory)
+      ? cacheDirectory
+      : path.join(process.cwd(), cacheDirectory),
+    path.relative(
+      process.cwd(),
+      this.resourcePath.replace(/\.[^.]+$/, '.linaria.css')
+    )
   );
 
-  let cssText = css;
+  const result = transform(
+    this.resourcePath,
+    content,
+    rest,
+    inputSourceMap,
+    outputFilename
+  );
 
-  if (cssText) {
-    const slug = slugify(this.resourcePath);
-    const filename = `${path
-      .basename(this.resourcePath)
-      .replace(/\.js$/, '')}_${slug}.css`;
+  if (result.cssText) {
+    let { cssText } = result;
 
-    const output = path.join(os.tmpdir(), filename.split(path.sep).join('_'));
-
-    if (map) {
-      map.setSourceContent(
-        this.resourcePath,
-        // We need to get the original source before it was processed
-        this.fs.readFileSync(this.resourcePath).toString()
-      );
-
+    if (sourceMap) {
       cssText += `/*# sourceMappingURL=data:application/json;base64,${Buffer.from(
-        map.toString()
+        result.cssSourceMapText
       ).toString('base64')}*/`;
     }
 
-    if (dependencies) {
-      dependencies.forEach(dep => {
+    if (result.dependencies && result.dependencies.length) {
+      result.dependencies.forEach(dep => {
         try {
-          const file = Module._resolveFilename(dep, {
+          const f = Module._resolveFilename(dep, {
             id: this.resourcePath,
             filename: this.resourcePath,
             paths: Module._nodeModulePaths(path.dirname(this.resourcePath)),
           });
 
-          this.addDependency(file);
+          this.addDependency(f);
         } catch (e) {
           // Ignore
         }
       });
     }
 
-    fs.writeFileSync(output, cssText);
+    // Read the file first to compare the content
+    // Write the new content only if it's changed
+    // This will prevent unnecessary WDS reloads
+    let currentCssText;
 
-    return `${content}\n\nrequire("${output}")`;
+    try {
+      currentCssText = fs.readFileSync(outputFilename, 'utf-8');
+    } catch (e) {
+      // Ignore error
+    }
+
+    if (currentCssText !== cssText) {
+      mkdirp.sync(path.dirname(outputFilename));
+      fs.writeFileSync(outputFilename, cssText);
+    }
+
+    this.callback(
+      null,
+      `${result.code}\n\nrequire("${outputFilename}")`,
+      result.sourceMap
+    );
+    return;
   }
 
-  return content;
+  this.callback(null, result.code, result.sourceMap);
 };

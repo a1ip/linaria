@@ -29,26 +29,34 @@ module.exports = {
         exclude: /node_modules/,
         use: [
           {
-            loader: require.resolve('../src/loader'),
-            options: {
-              sourceMap: true,
-            },
+            loader: 'babel-loader',
           },
           {
-            loader: 'babel-loader',
-            options: require('./babel.config'),
+            loader: require.resolve('../src/loader'),
+            options: {
+              sourceMap: process.env.NODE_ENV !== 'production',
+            },
           },
         ],
       },
       {
         test: /\.css$/,
         use: [
+          'css-hot-loader',
           MiniCssExtractPlugin.loader,
           {
             loader: 'css-loader',
             options: {
-              sourceMap: true,
+              sourceMap: process.env.NODE_ENV !== 'production',
             },
+          },
+        ],
+      },
+      {
+        test: /\.(png|jpg|gif|svg)$/,
+        use: [
+          {
+            loader: 'file-loader',
           },
         ],
       },

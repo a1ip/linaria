@@ -1,7 +1,7 @@
 /* eslint-disable no-param-reassign */
 /* @flow */
 
-const stylis = require('stylis');
+const { relative, dirname } = require('path');
 const generator = require('@babel/generator').default;
 const { isValidElementType } = require('react-is');
 const Module = require('./module');
@@ -10,9 +10,11 @@ const slugify = require('../slugify');
 const { units, unitless } = require('./units');
 
 const hyphenate = s =>
-  // Hyphenate CSS property names from camelCase version from JS string
-  // Special case for `-ms` because in JS it starts with `ms` unlike `Webkit`
-  s.replace(/([A-Z])/g, g => `-${g[0].toLowerCase()}`).replace(/^ms-/, '-ms-');
+  s
+    // Hyphenate CSS property names from camelCase version from JS string
+    .replace(/([A-Z])/g, (match, p1) => `-${p1.toLowerCase()}`)
+    // Special case for `-ms` because in JS it starts with `ms` unlike `Webkit`
+    .replace(/^ms-/, '-ms-');
 
 const isPlainObject = o =>
   typeof o === 'object' && o != null && o.constructor.name === 'Object';
@@ -35,7 +37,15 @@ const toCSS = o =>
 
       return `${hyphenate(key)}: ${
         /* $FlowFixMe */
-        typeof value === 'number' && value !== 0 && !unitless[key]
+        typeof value === 'number' &&
+        value !== 0 &&
+        !unitless[
+          // Strip vendor prefixes when checking if the value is unitless
+          key.replace(
+            /^(Webkit|Moz|O|ms)([A-Z])(.+)$/,
+            (match, p1, p2, p3) => `${p2.toLowerCase()}${p3}`
+          )
+        ]
           ? `${value}px`
           : value
       };`;
@@ -61,6 +71,69 @@ const stripLines = (loc, text) => {
   return result;
 };
 
+// Verify if the binding is imported from the specified source
+const imports = (t, scope, filename, identifier, source) => {
+  const binding = scope.getAllBindings()[identifier];
+
+  if (!binding) {
+    return false;
+  }
+
+  const p = binding.path;
+
+  const resolveFromFile = id => {
+    /* $FlowFixMe */
+    const M = require('module');
+
+    try {
+      return M._resolveFilename(id, {
+        id: filename,
+        filename,
+        paths: M._nodeModulePaths(dirname(filename)),
+      });
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const isImportingModule = value =>
+    // If the value is an exact match, assume it imports the module
+    value === source ||
+    // Otherwise try to resolve both and check if they are the same file
+    resolveFromFile(value) ===
+      // eslint-disable-next-line no-nested-ternary
+      (source === 'linaria'
+        ? require.resolve('../index')
+        : source === 'linaria/react'
+          ? require.resolve('../react/')
+          : resolveFromFile(source));
+
+  if (t.isImportSpecifier(p) && t.isImportDeclaration(p.parentPath)) {
+    return isImportingModule(p.parentPath.node.source.value);
+  }
+
+  if (t.isVariableDeclarator(p)) {
+    if (
+      t.isCallExpression(p.node.init) &&
+      t.isIdentifier(p.node.init.callee) &&
+      p.node.init.callee.name === 'require' &&
+      p.node.init.arguments.length === 1
+    ) {
+      const node = p.node.init.arguments[0];
+
+      if (t.isStringLiteral(node)) {
+        return isImportingModule(node.value);
+      }
+
+      if (t.isTemplateLiteral(node) && node.quasis.length === 1) {
+        return isImportingModule(node.quasis[0].value.cooked);
+      }
+    }
+  }
+
+  return false;
+};
+
 // Match any valid CSS units followed by a separator such as ;, newline etc.
 const unitRegex = new RegExp(`^(${units.join('|')})(;|,|\n| |\\))`);
 
@@ -74,10 +147,11 @@ type Location = {
 /* ::
 type State = {|
   rules: {
-    [className: string]: {
-      cssText: string,
+    [selector: string]: {
+      className: string,
       displayName: string,
-      start: Location,
+      cssText: string,
+      start: ?Location,
     },
   },
   replacements: Array<{
@@ -88,6 +162,8 @@ type State = {|
   dependencies: string[],
   file: {
     opts: {
+      cwd: string,
+      root: string,
       filename: string,
     },
     metadata: any,
@@ -123,47 +199,12 @@ module.exports = function extract(
         },
         exit(path /* : any */, state /* : State */) {
           if (Object.keys(state.rules).length) {
-            const mappings = [];
-
-            let cssText = '';
-
-            Object.keys(state.rules).forEach((selector, index) => {
-              mappings.push({
-                generated: {
-                  line: index + 1,
-                  column: 0,
-                },
-                original: state.rules[selector].start,
-                name: selector,
-              });
-
-              // Run each rule through stylis to support nesting
-              cssText += `${stylis(selector, state.rules[selector].cssText)}\n`;
-            });
-
-            // Add the collected styles as a comment to the end of file
-            path.addComment(
-              'trailing',
-              `\nCSS OUTPUT TEXT START\n${cssText}\nCSS OUTPUT TEXT END\n` +
-                `\nCSS OUTPUT MAPPINGS:${JSON.stringify(
-                  mappings
-                )}\nCSS OUTPUT DEPENDENCIES:${JSON.stringify(
-                  // Remove duplicate dependencies
-                  state.dependencies.filter(
-                    (d, i, self) => self.indexOf(d) === i
-                  )
-                )}\n`
-            );
-
-            // Also return the data as the fle metadata
-            // Bundlers or other tools can use this instead of reading the comment
+            // Store the result as the file metadata
             state.file.metadata = {
               linaria: {
                 rules: state.rules,
                 replacements: state.replacements,
                 dependencies: state.dependencies,
-                mappings,
-                cssText,
               },
             };
           }
@@ -176,24 +217,41 @@ module.exports = function extract(
         const { quasi, tag } = path.node;
 
         let styled;
+        let css;
 
         if (
-          t.isCallExpression(tag) &&
-          t.isIdentifier(tag.callee) &&
-          tag.arguments.length === 1 &&
-          tag.callee.name === 'styled'
+          imports(
+            t,
+            path.scope,
+            state.file.opts.filename,
+            'styled',
+            'linaria/react'
+          )
         ) {
-          styled = { component: path.get('tag').get('arguments')[0] };
+          if (
+            t.isCallExpression(tag) &&
+            t.isIdentifier(tag.callee) &&
+            tag.arguments.length === 1 &&
+            tag.callee.name === 'styled'
+          ) {
+            styled = { component: path.get('tag').get('arguments')[0] };
+          } else if (
+            t.isMemberExpression(tag) &&
+            t.isIdentifier(tag.object) &&
+            t.isIdentifier(tag.property) &&
+            tag.object.name === 'styled'
+          ) {
+            styled = {
+              component: { node: t.stringLiteral(tag.property.name) },
+            };
+          }
         } else if (
-          t.isMemberExpression(tag) &&
-          t.isIdentifier(tag.object) &&
-          t.isIdentifier(tag.property) &&
-          tag.object.name === 'styled'
+          imports(t, path.scope, state.file.opts.filename, 'css', 'linaria')
         ) {
-          styled = { component: { node: t.stringLiteral(tag.property.name) } };
+          css = t.isIdentifier(tag) && tag.name === 'css';
         }
 
-        if (styled || (t.isIdentifier(tag) && tag.name === 'css')) {
+        if (styled || css) {
           const interpolations = [];
 
           // Try to determine a readable class name
@@ -229,7 +287,10 @@ module.exports = function extract(
           // Also use append the index of the class to the filename for uniqueness in the file
           const slug = toValidCSSIdentifier(
             `${displayName.charAt(0).toLowerCase()}${slugify(
-              `${state.file.opts.filename}:${state.index++}`
+              `${relative(
+                state.file.opts.root,
+                state.file.opts.filename
+              )}:${state.index++}`
             )}`
           );
 
@@ -250,15 +311,17 @@ module.exports = function extract(
               // If it has a unit after it, we need to move the unit into the interpolation
               // e.g. `var(--size)px` should actually be `var(--size)`
               // So we check if the current text starts with a unit, and add the unit to the previous interpolation
+              // Another approach would be `calc(var(--size) * 1px), but some browsers don't support all units
+              // https://bugzilla.mozilla.org/show_bug.cgi?id=956573
               const matches = el.value.cooked.match(unitRegex);
 
               if (matches) {
                 const last = interpolations[interpolations.length - 1];
-                const [, unit, sep] = matches;
+                const [, unit] = matches;
 
                 if (last && cssText.endsWith(`var(--${last.id})`)) {
                   last.unit = unit;
-                  cssText += el.value.cooked.replace(unitRegex, sep);
+                  cssText += el.value.cooked.replace(unitRegex, '$2');
                   appended = true;
                 }
               }
@@ -470,7 +533,8 @@ module.exports = function extract(
             cssText,
             className,
             displayName,
-            start: path.parent.loc.start,
+            start:
+              path.parent && path.parent.loc ? path.parent.loc.start : null,
           };
         }
       },

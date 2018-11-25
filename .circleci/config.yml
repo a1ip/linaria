@@ -30,7 +30,7 @@ jobs:
       - persist_to_workspace:
           root: .
           paths: .
-  lint-and-flow:
+  lint-and-typecheck:
       <<: *defaults
       steps:
         - attach_workspace:
@@ -38,6 +38,7 @@ jobs:
         - run: |
             yarn lint
             yarn flow
+            yarn typescript
   unit-tests:
       <<: *defaults
       steps:
@@ -50,12 +51,6 @@ jobs:
         - store_artifacts:
             path: coverage
             destination: coverage
-  build-website:
-      <<: *defaults
-      steps:
-        - attach_workspace:
-            at: ~/linaria
-        - run: yarn --cwd website build
   lint-website:
       <<: *defaults
       steps:
@@ -69,7 +64,8 @@ jobs:
             at: ~/linaria
         - run: |
             bash .circleci/install-chrome-deps.sh
-            yarn test:integration
+            yarn --cwd website build
+            yarn test:integration --forceExit
         - store_artifacts:
             path: website/__integration-tests__/__image_snapshots__/__diff_output__
             destination: website-snapshot-diffs
@@ -79,17 +75,13 @@ workflows:
   build-and-test:
     jobs:
       - install-dependencies
-      - lint-and-flow:
+      - lint-and-typecheck:
           requires:
             - install-dependencies
       - unit-tests:
           requires:
             - install-dependencies
       - integration-tests:
-          requires:
-            - install-dependencies
-            - build-website
-      - build-website:
           requires:
             - install-dependencies
       - lint-website:

@@ -1,10 +1,5 @@
 module.exports = {
-  presets: [
-    '@babel/preset-env',
-    '@babel/preset-flow',
-    '@babel/preset-react',
-    require.resolve('../src/babel'),
-  ],
+  presets: ['@babel/preset-env', '@babel/preset-flow', '@babel/preset-react'],
   plugins: [
     [
       'module-resolver',
@@ -17,7 +12,19 @@ module.exports = {
   ],
   env: {
     server: {
-      presets: [['@babel/preset-env', { targets: { node: 8 } }]],
+      presets: [
+        ['@babel/preset-env', { targets: { node: 8 } }],
+        require.resolve('../src/babel'),
+      ],
+      plugins: [
+        [
+          'file-loader',
+          {
+            publicPath: '/dist',
+            outputPath: '/dist',
+          },
+        ],
+      ],
     },
   },
 };

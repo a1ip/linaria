@@ -1,6 +1,6 @@
 /* @flow */
 
-const babel = require('@babel/core');
+const transform = require('../transform');
 
 /* ::
 type LintResult = {
@@ -13,31 +13,27 @@ function preprocessor() {
 
   return {
     code(input /* : string */, filename /* : string */) {
-      // Check if the file contains `css` or `styled` tag first
-      // Otherwise we should skip linting
-      if (!/\b(styled(\([^)]+\)|\.[a-z0-9]+)|css)`/.test(input)) {
-        return '';
-      }
+      /* eslint-disable prefer-destructuring */
 
-      let metadata;
+      let result;
 
       try {
-        // eslint-disable-next-line prefer-destructuring
-        metadata = babel.transformSync(input, {
-          filename,
-        }).metadata;
+        result = transform(filename, input, {
+          evaluate: true,
+        });
       } catch (e) {
+        // Ignore parse errors
         return '';
       }
 
-      if (!metadata.linaria) {
+      const { rules, replacements } = result;
+
+      if (!rules) {
         return '';
       }
-
-      let cssText = '';
 
       // Construct a CSS-ish file from the unprocessed style rules
-      const { rules, replacements } = metadata.linaria;
+      let cssText = '';
 
       Object.keys(rules).forEach(selector => {
         const rule = rules[selector];
@@ -45,7 +41,7 @@ function preprocessor() {
         // Append new lines until we get to the start line number
         let line = cssText.split('\n').length;
 
-        while (line < rule.start.line) {
+        while (rule.start && line < rule.start.line) {
           cssText += '\n';
           line++;
         }
@@ -57,7 +53,7 @@ function preprocessor() {
 
         let column = last ? last.length : 0;
 
-        while (column < rule.start.column) {
+        while (rule.start && column < rule.start.column) {
           cssText += ' ';
           column++;
         }

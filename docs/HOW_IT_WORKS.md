@@ -3,11 +3,11 @@
 Linaria consists of 2 parts:
 
 1. Babel plugin
-2. Webpack loader
+2. Bundler integration
 
 ## Babel plugin
 
-The Babel plugin will look for `css` and `styled` tags in your code and extract the CSS out to a comment at the end of the file. It will also generate unique class names based on the hash of the filename.
+The Babel plugin will look for `css` and `styled` tags in your code, extract the CSS out and return it in the file's metadata. It will also generate unique class names based on the hash of the filename.
 
 When using the `styled` tag, dynamic interpolations will be replaced with CSS custom properties. References to constants in the scope will also be inlined. If the same expression is used multiple times, the plugin will create a single CSS custom property for those.
 
@@ -62,10 +62,11 @@ const Container = styled('div')({
     'c1ugh8t9-2': [props => props.color],
   },
 });
+```
 
-/*
-CSS OUTPUT TEXT START
+The extracted CSS will look something like this:
 
+```css
 .Title_t1ugh8t9 {
   font-family: var(--t1ugh8t-0);
 }
@@ -81,13 +82,6 @@ CSS OUTPUT TEXT START
 .Container_c1ugh8t9:hover {
   border-color: blue;
 }
-
-CSS OUTPUT TEXT END
-
-CSS OUTPUT MAPPINGS:[{"generated":{"line":1,"column":0},"original":{"line":3,"column":6},"name":"Title_t1ugh8t9"},{"generated":{"line":5,"column":0},"original":{"line":7,"column":6},"name":"Container_c1ugh8t"}]
-
-CSS OUTPUT DEPENDENCIES:[]
-*/
 ```
 
 If we encounter a valid unit directly after the interpolation, it'll be passed to the helper so that the correct unit is used when setting the property. This allows you to write this:
@@ -152,7 +146,7 @@ const Container = styled.h1`
 
 We support this usage because it allows you to use a library such as [polished.js](https://polished.js.org) which outputs object based styles along with Linaria.
 
-If you've configured the plugin to evaluate expressions with `evaluate: true` (default), any dynamic expressions we encounter will be evaluated during the buildtime in a sandbox, and the result will be included in the CSS. Since these expressions are evaluated at build time in Node, you cannot use any browser specific APIs or any API which is only available in runtime. Access to Node native modules such as `fs` is also not allowed inside the sandbox to prevent malicious scripts. In addition, to achieve consistent build output, you should also avoid doing any side effects in these expressions and keep them pure.
+If you've configured the plugin to evaluate expressions with `evaluate: true` (default), any dynamic expressions we encounter will be evaluated during the build-time in a sandbox, and the result will be included in the CSS. Since these expressions are evaluated at build time in Node, you cannot use any browser specific APIs or any API which is only available in runtime. Access to Node native modules such as `fs` is also not allowed inside the sandbox to prevent malicious scripts. In addition, to achieve consistent build output, you should also avoid doing any side effects in these expressions and keep them pure.
 
 You might want to skip evaluating a certain interpolation if you're using a browser API, a global variable which is only available at runtime, or a module which breaks when evaluating in the sandbox for some reason. To skip evaluating an interpolation, you can always wrap it in a function, like so:
 
@@ -164,6 +158,6 @@ const Box = styled.h1`
 
 But keep in mind that if you're doing SSR for your app, this won't work with SSR. In this particular case, better option will be to use the `calc` function along with the `vh` unit for the viewport height (e.g. `calc(100vh * 2)`).
 
-## Webpack loader
+## Bundler integration
 
-The webpack loader reads the comment output from the Babel plugin and writes it to a CSS file, which can be picked up by `css-loader` to generate the final CSS. It's also responsible for generating the sourcemap from the metadata from the Babel plugin.
+Plugins for bundlers such as webpack and Rollup use the Babel plugin internally and write the CSS text along with the sourcemap to a CSS file. The CSS file is then picked up and processed by the bundler (e.g. - `css-loader` in case of webpack) to generate the final CSS.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Linaria" src="website/static/images/linaria-logo@2x.png" width="496">
+  <img alt="Linaria" src="website/assets/linaria-logo@2x.png" width="496">
 </p>
 
 <p align="center">
@@ -13,7 +13,6 @@ Zero-runtime CSS in JS library.
 [![Version][version-badge]][package]
 [![MIT License][license-badge]][license]
 
-
 [![All Contributors][all-contributors-badge]](#contributors)
 [![PRs Welcome][prs-welcome-badge]][prs-welcome]
 [![Chat][chat-badge]][chat]
@@ -23,11 +22,12 @@ Zero-runtime CSS in JS library.
 
 ## Features
 
-* Write CSS in JS, but with **zero runtime**, CSS is extracted to CSS files during build
-* Familiar **CSS syntax** with Sass like nesting
-* Use **dynamic prop based styles** with the React bindings, uses CSS variables behind the scenes
-* Easily find where the style was defined with **CSS sourcemaps**
-* **Lint your CSS** in JS with [stylelint](https://github.com/stylelint/stylelint)
+- Write CSS in JS, but with **zero runtime**, CSS is extracted to CSS files during build
+- Familiar **CSS syntax** with Sass like nesting
+- Use **dynamic prop based styles** with the React bindings, uses CSS variables behind the scenes
+- Easily find where the style was defined with **CSS sourcemaps**
+- **Lint your CSS** in JS with [stylelint](https://github.com/stylelint/stylelint)
+- Use **JavaScript for logic**, no CSS preprocessor needed
 
 **[Why use Linaria](/docs/BENEFITS.md)**
 
@@ -43,11 +43,11 @@ or
 yarn add linaria
 ```
 
-## Usage
+## Setup
 
-Linaria requires you to use a babel plugin along with a webpack loader.
+Linaria currently supports webpack and Rollup to extract the CSS at build time. See [Bundlers integration](/docs/BUNDLERS_INTEGRATION.md) to configure your bundler.
 
-First, add the babel preset to your `.babelrc`:
+Optionally, add the `linaria/babel` preset to your Babel configuration at the end of the presets list to avoid errors when importing the components in your server code or tests:
 
 ```json
 {
@@ -59,63 +59,14 @@ First, add the babel preset to your `.babelrc`:
 }
 ```
 
-Make sure that `linaria/babel` is the last item in your `presets` list.
-
-Next, add the webpack loader to your `webpack.config.js`:
-
-```js
-module: {
-  rules: [
-    {
-      test: /\.js$/,
-      use: [
-        {
-          loader: 'linaria/loader',
-          options: {
-            sourceMap: process.env.NODE_ENV !== 'production',
-          },
-        },
-        {
-          loader: 'babel-loader'
-        }
-      ],
-    },
-    {
-      test: /\.css$/,
-      use: [
-        MiniCssExtractPlugin.loader,
-        {
-          loader: 'css-loader',
-          options: {
-            sourceMap: process.env.NODE_ENV !== 'production',
-          },
-        },
-      ],
-    },
-  ],
-  plugins: [
-    new MiniCssExtractPlugin({
-      filename: 'styles.css',
-    }),
-  ],
-},
-```
-
-Make sure that `linaria/loader` is included before `babel-loader`.
-
-Now, the CSS you write with Linaria will be extracted at build time to the `styles.css` file. Linaria automatically vendor prefixes and strips whitespace from the CSS.
-
-Linaria integrates with your CSS pipeline, so you can always perform additional operations on the CSS, for example, using [postcss](https://postcss.org/) plugins such as [clean-css](https://github.com/jakubpawlowicz/clean-css) to further minify your CSS.
-
 ## Syntax
 
-Linaria can be used with any framework, with additional helpers for `react`. The basic syntax looks like this:
+Linaria can be used with any framework, with additional helpers for React. The basic syntax looks like this:
 
 ```js
 import { css } from 'linaria';
 import { modularScale, hiDPI } from 'polished';
 import fonts from './fonts';
-import colors from './colors';
 
 // Write your styles in `css` tag
 const header = css`
@@ -124,23 +75,21 @@ const header = css`
   font-size: ${modularScale(2)};
 
   ${hiDPI(1.5)} {
-    font-size: ${modularScale(2.5)}
+    font-size: ${modularScale(2.5)};
   }
 `;
 
 // Then use it as a class name
-<h1 class={header}>Hello world</h1>
+<h1 class={header}>Hello world</h1>;
 ```
 
 You can use imported variables and functions for logic inside the CSS code. They will be evaluated at build time.
 
-If you're using React, you can use the `styled` helper, which makes it easy to write React components with dynamic styles with a styled-component like syntax:
+If you're using [React](https://reactjs.org/), you can use the `styled` helper, which makes it easy to write React components with dynamic styles with a styled-component like syntax:
 
 ```js
 import { styled } from 'linaria/react';
 import { families, sizes } from './fonts';
-
-const background = 'yellow';
 
 // Write your styles in `styled` tag
 const Title = styled.h1`
@@ -149,9 +98,7 @@ const Title = styled.h1`
 
 const Container = styled.div`
   font-size: ${sizes.medium}px;
-  background-color: ${background};
   color: ${props => props.color};
-  width: ${100 / 3}%;
   border: 1px solid red;
 
   &:hover {
@@ -166,31 +113,32 @@ const Container = styled.div`
 // Then use the resulting component
 <Container color="#333">
   <Title>Hello world</Title>
-</Container>
+</Container>;
 ```
 
 Dynamic styles will be applied using CSS custom properties (aka CSS variables) and don't require any runtime.
 
 ## Documentation
 
-* [API and usage](/docs/API.md)
-  * [Client APIs](/docs/API.md#client-apis)
-  * [Server APIs](/docs/API.md#server-apis)
-* [Configuring Babel](/docs/BABEL_PRESET.md)
-* [Dynamic styles with `css` tag](/docs/DYNAMIC_STYLES.md)
-* [Theming](/docs/THEMING.md)
-* [Server rendering](/docs/SERVER_RENDERING.md)
-* [Bundlers integration](/docs/BUNDLERS_INTEGRATION.md)
-  * [Webpack](/docs/BUNDLERS_INTEGRATION.md#webpack)
-* [Linting](/docs/LINTING.md)
-* [How it works](/docs/HOW_IT_WORKS.md)
-* [Example](/website)
+- [API and usage](/docs/API.md)
+  - [Client APIs](/docs/API.md#client-apis)
+  - [Server APIs](/docs/API.md#server-apis)
+- [Configuring Babel](/docs/BABEL_PRESET.md)
+- [Dynamic styles with `css` tag](/docs/DYNAMIC_STYLES.md)
+- [Theming](/docs/THEMING.md)
+- [Critical CSS extraction](/docs/CRITICAL_CSS.md)
+- [Bundlers integration](/docs/BUNDLERS_INTEGRATION.md)
+  - [Webpack](/docs/BUNDLERS_INTEGRATION.md#webpack)
+  - [Rollup](/docs/BUNDLERS_INTEGRATION.md#rollup)
+- [Linting](/docs/LINTING.md)
+- [How it works](/docs/HOW_IT_WORKS.md)
+- [Example](/website)
 
 ## Trade-offs
 
-* No IE11 support when using dynamic styles components since it uses CSS custom properties
-* Dynamic styles are not supported with `css` tag. See [Dynamic Styles](/docs/DYNAMIC_STYLES.md) for alternative approaches.
-* Modules used in the CSS rules cannot have side-effects.
+- No IE11 support when using dynamic styles in components with `styled`, since it uses CSS custom properties
+- Dynamic styles are not supported with `css` tag. See [Dynamic styles with `css` tag](/docs/DYNAMIC_STYLES.md) for alternative approaches.
+- Modules used in the CSS rules cannot have side-effects.
   For example:
 
   ```js
@@ -208,31 +156,32 @@ Dynamic styles will be applied using CSS custom properties (aka CSS variables) a
 
 ### VSCode
 
-* Syntax Highlighting - [Styled Components Plugin](https://marketplace.visualstudio.com/items?itemName=jpoissonnier.vscode-styled-components)
-* Autocompletion - [Styled Components Plugin](https://marketplace.visualstudio.com/items?itemName=jpoissonnier.vscode-styled-components)
+- Syntax Highlighting - [language-babel](https://marketplace.visualstudio.com/items?itemName=mgmcdermott.vscode-language-babel)
+- Autocompletion - [vscode-styled-components](https://marketplace.visualstudio.com/items?itemName=jpoissonnier.vscode-styled-components)
+- Linting - [stylelint](https://marketplace.visualstudio.com/items?itemName=shinnn.stylelint)
 
 ### Atom
 
-* Syntax Highlighting - [Babel Grammar](https://atom.io/packages/language-babel)
+- Syntax Highlighting and Autocompletion - [language-babel](https://atom.io/packages/language-babel)
 
 ## Recommended Libraries
 
-* [linaria-jest](https://github.com/thymikee/linaria-jest) – Jest testing utilities for Linaria.
-* [babel-plugin-object-styles-to-template](https://github.com/satya164/babel-plugin-object-styles-to-template) - Babel plugin to write styles in object syntax with linaria
-* [polished.js](https://polished.js.org/) - A lightweight toolset for writing styles in JavaScript.
+- [linaria-jest](https://github.com/thymikee/linaria-jest) – Jest testing utilities for Linaria.
+- [gatsby-plugin-linaria](https://github.com/silvenon/gatsby-plugin-linaria) – Gatsby plugin that sets up Babel and webpack configuration for Linaria.
+- [polished.js](https://polished.js.org/) - A lightweight toolset for writing styles in JavaScript.
 
 ## Inspiration
 
-* [glam](https://github.com/threepointone/glam)
-* [styled-components](https://github.com/styled-components/styled-components)
-* [css-literal-loader](https://github.com/4Catalyzer/css-literal-loader)
+- [glam](https://github.com/threepointone/glam)
+- [styled-components](https://github.com/styled-components/styled-components)
+- [css-literal-loader](https://github.com/4Catalyzer/css-literal-loader)
 
 ## Acknowledgements
 
 This project wouldn't have been possible without the following libraries or the people behind them.
 
-* [babel](https://babeljs.io/)
-* [stylis.js](https://github.com/thysultan/stylis.js)
+- [babel](https://babeljs.io/)
+- [stylis.js](https://github.com/thysultan/stylis.js)
 
 Special thanks to [@kentcdodds](https://github.com/kentcdodds) for his babel plugin and [@threepointone](https://github.com/threepointone) for his suggestions and encouragement.
 

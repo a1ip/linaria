@@ -1,8 +1,24 @@
 /* @flow */
 
-const dedent = require('dedent');
 const generator = require('@babel/generator').default;
+const babel = require('@babel/core');
 const Module = require('./module');
+
+function defaultTransformModule(text) {
+  return babel.transformSync(text, {
+    caller: { name: 'linaria', evaluate: true },
+    filename: this.filename,
+    plugins: [
+      // Include this plugin to avoid extra config when using { module: false } for webpack
+      '@babel/plugin-transform-modules-commonjs',
+      '@babel/plugin-proposal-export-namespace-from',
+      // We don't support dynamic imports when evaluating, but don't wanna syntax error
+      // This will replace dynamic imports with an object that does nothing
+      require.resolve('./dynamic-import-noop'),
+      [require.resolve('./extract'), { evaluate: true }],
+    ],
+  });
+}
 
 const resolve = (path, t, requirements) => {
   const binding = path.scope.getBinding(path.node.name);
@@ -57,7 +73,8 @@ const resolve = (path, t, requirements) => {
 module.exports = function evaluate(
   path /* : any */,
   t /* : any */,
-  filename /* : string */
+  filename /* : string */,
+  transformModule /* : (text: string) => { code: string } */ = defaultTransformModule
 ) {
   const requirements = [];
 
@@ -146,12 +163,16 @@ module.exports = function evaluate(
 
   const m = new Module(filename);
 
+  m.transform = transformModule;
   m.evaluate(
-    dedent`
-    ${imports.map(node => generator(node).code).join('\n')}
-
-    ${generator(wrapped).code}
-    `
+    [
+      // Use String.raw to preserve escapes such as '\n' in the code
+      // Flow doesn't understand template tags: https://github.com/facebook/flow/issues/2616
+      /* $FlowFixMe */
+      imports.map(node => String.raw`${generator(node).code}`).join('\n'),
+      /* $FlowFixMe */
+      String.raw`${generator(wrapped).code}`,
+    ].join('\n')
   );
 
   return {

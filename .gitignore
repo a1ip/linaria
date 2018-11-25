@@ -1,3 +1,7 @@
+### OS Junk ###
+.DS_Store
+*~
+
 ### Node ###
 # Logs
 logs
@@ -62,3 +66,5 @@ typings/
 lib/
 dist/
 build/
+
+.linaria-cache
