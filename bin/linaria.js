@@ -1,89 +1,95 @@
 #!/usr/bin/env node
+/* @flow */
 
 const path = require('path');
 const fs = require('fs');
 const mkdir = require('mkdirp');
-const parseArgs = require('minimist');
-const processFile = require('../lib/node');
+const glob = require('glob');
+const commander = require('commander');
+const { transform } = require('../lib/node');
 
-const args = parseArgs(process.argv.slice(2));
+commander
+  // $FlowFixMe
+  .version(require(path.join(__dirname, '../package.json')).version)
+  .usage('[options] <file1> [<fileN>...]')
+  .option('-s, --source-maps', 'generate source maps')
+  .option('-r, --require-css', 'require CSS in original JS file')
+  .option('-o, --out-dir <dir>', 'output directory')
+  .action((file, ...rest) => {
+    if (typeof file !== 'string') {
+      commander.help();
+    }
 
-if (args.h || args.help) {
-  console.log(
-    [
-      'Usage: linaria [options] <file1> [...<fileN>]',
-      '',
-      'Arguments',
-      '  <file1> [...<fileN>]  File paths or glob patterns',
-      '',
-      'Options:',
-      '  --help, -h            Show help                        [boolean]',
-      '  --source-maps, -s     Generate source maps             [boolean]',
-      '  --require-css, -r     Require CSS in original JS file  [boolean]',
-      '  --out-dir, -o         Output directory                 [string]',
-      '  --config, -c          Path to Babel config file        [string]',
-      '',
-      'Example:',
-      '  linaria -s ./file1.js ./file2.js',
-      '  linaria -o dist src/**/*.js',
-    ].join('\n')
+    const command = rest[rest.length - 1];
+    const files = [file, ...rest.slice(0, -1)];
+    // console.log({
+    //   files,
+    //   sourceMaps: Boolean(command.sourceMaps),
+    //   requireCss: Boolean(command.requireCss),
+    //   outDir: command.outDir,
+    //   config: command.config,
+    // });
+    processFiles(files, {
+      sourceMaps: Boolean(command.sourceMaps),
+      requireCss: Boolean(command.requireCss),
+      outDir: command.outDir || '.',
+    });
+  })
+  .parse(process.argv);
+
+/* ::
+type Options = {
+  sourceMaps: boolean,
+  requireCss: boolean,
+  outDir: string,
+};
+*/
+
+function processFiles(files /* :string[] */, options /* :Options */) {
+  const resolvedFiles = files.reduce(
+    (acc, pattern) => [...acc, ...glob.sync(pattern, { absolute: true })],
+    []
   );
-} else {
-  const sourceMaps = Boolean(args.s || args.sourceMaps);
-  const outDir = path.resolve(args.o || args.outDir || '');
-  const requireCss = Boolean(args.r || args.requireCss);
-  const config = args.c || args.config;
 
-  if (!args._.length) {
-    console.error(
-      'ERROR: Missing arguments. Please profile glob path to files for processing.'
-    );
-    process.exit(1);
-  }
+  resolvedFiles.forEach(filename => {
+    const outputFilename = resolveOutputFilename(filename, options.outDir);
+    // const { cssText, sourceMap, cssSourceMapText } = transform(
+    transform(fs.readFileSync(filename).toString(), {
+      inputFilename: filename,
+      outputFilename,
+      inputSourceMap: null,
+      pluginOptions: {},
+    });
 
-  const styles = processFile(args._, {
-    sourceMaps,
-    babelConfig: config
-      ? {
-          babelrc: false,
-          configFile: config,
-        }
-      : undefined,
+    // if (cssText) {
+    //   mkdir.sync(path.dirname(outputFilename));
+    //   const cssContent =
+    //     options.sourceMaps && sourceMap
+    //       ? `${cssText}\n/*# sourceMappingURL=${outputFilename}.map */`
+    //       : cssText;
+    //   fs.writeFileSync(outputFilename, cssContent);
+    //   if (options.sourceMaps && sourceMap) {
+    //     // $FlowFixMe
+    //     fs.writeFileSync(`${outputFilename}.map`, cssSourceMapText);
+    //   }
+    //   if (options.requireCss) {
+    //     fs.writeFileSync(
+    //       filename,
+    //       `${fs.readFileSync(filename).toString()}\nrequire('${path.relative(
+    //         path.dirname(filename),
+    //         outputFilename
+    //       )}');`
+    //     );
+    //   }
+
+    console.log(`Writing ${outputFilename}`);
   });
+}
 
-  Object.keys(styles).forEach(jsFilename => {
-    const folderStructure = path.relative(
-      process.cwd(),
-      path.dirname(jsFilename)
-    );
-    const cssFilename = path
-      .basename(jsFilename)
-      .replace(path.extname(jsFilename), '.css');
-    const cssOutput = path.join(outDir, folderStructure, cssFilename);
-
-    mkdir.sync(path.dirname(cssOutput));
-    // Add source mapping URL
-    const cssContent = styles[jsFilename].map
-      ? `${styles[jsFilename].css}\n/*# sourceMappingURL=${cssFilename}.map */`
-      : styles[jsFilename].css;
-
-    fs.writeFileSync(cssOutput, cssContent);
-
-    // Add require to original JS file to import extracted CSS.
-    if (requireCss) {
-      fs.writeFileSync(
-        jsFilename,
-        `${fs.readFileSync(jsFilename).toString()}\nrequire('${path.relative(
-          path.dirname(jsFilename),
-          cssOutput
-        )}');`
-      );
-    }
-
-    if (styles[jsFilename].map) {
-      fs.writeFileSync(`${cssOutput}.map`, styles[jsFilename].map);
-    }
-  });
-
-  console.log(`Generated ${Object.keys(styles).length} CSS files in ${outDir}`);
+function resolveOutputFilename(filename /* :string */, outDir /* :string */) {
+  const folderStructure = path.relative(process.cwd(), path.dirname(filename));
+  const outputBasename = path
+    .basename(filename)
+    .replace(path.extname(filename), '.css');
+  return path.resolve(outDir, folderStructure, outputBasename);
 }
